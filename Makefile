@@ -1,4 +1,4 @@
-HOST='root@erebe.eu'
+HOST='root@terranblake.com'
 RASPBERRY='pi@10.200.200.2'
 
 .PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook
@@ -12,13 +12,13 @@ ifdef ARGS
 		-H 'Content-Type: application/json' \
 		-H 'X-Webhook-Token: '${SECRET} \
 		-d '{ "application_name": "$(ARGS)", "image_tag": "latest" }' \
-		-s https://hooks.erebe.eu/hooks/deploy 
+		-s https://hooks.terranblake.com/hooks/deploy 
 endif
 		
 install:
-	sops -d --extract '["public_key"]' --output ~/.ssh/erebe_eu.pub secrets/ssh.yml
-	sops -d --extract '["private_key"]' --output ~/.ssh/erebe_eu secrets/ssh.yml
-	chmod 600 ~/.ssh/erebe_eu*
+	sops -d --extract '["public_key"]' --output ~/.ssh/terranblake_com.pub secrets/ssh.yml
+	sops -d --extract '["private_key"]' --output ~/.ssh/terranblake_com secrets/ssh.yml
+	chmod 600 ~/.ssh/terranblake_com*
 	grep -q erebe.eu ~/.ssh/config > /dev/null 2>&1 || cat config/ssh_client_config >> ~/.ssh/config
 	mkdir ~/.kube || exit 0
 	sops -d --output ~/.kube/config secrets/kubernetes-config.yml
