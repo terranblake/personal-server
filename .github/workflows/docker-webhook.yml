@@ -33,4 +33,4 @@ jobs:
         run: |
           payload='{ "application_name": "webhook", "image_digest": "${{ steps.docker_build.outputs.digest }}", "image_tag": "latest" }'
           token='X-Webhook-Token: ${{ secrets.WEBHOOK_SECRET }}'
-          curl -i -X POST -H 'Content-Type: application/json' -H "${token}"  -d "${payload}" https://hooks.erebe.eu/hooks/deploy
+          curl -i -X POST -H 'Content-Type: application/json' -H "${token}"  -d "${payload}" https://hooks.terranblake.com/hooks/deploy
