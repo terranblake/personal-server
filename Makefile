@@ -1,4 +1,4 @@
-HOST='root@terranblake.com'
+HOST='root@ssh.${DOMAIN}'
 RASPBERRY='pi@10.200.200.2'
 
 .PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook
@@ -10,19 +10,18 @@ ifdef ARGS
 	$(eval SECRET := $(shell sops exec-env secrets/webhook.yml 'echo $${DEPLOYER_SECRET}'))
 	curl -i -X POST  \
 		-H 'Content-Type: application/json' \
-		-H 'X-Webhook-Token: '${SECRET} \
+		-H 'X-Webhook-Token: '${SECRET}' \
 		-d '{ "application_name": "$(ARGS)", "image_tag": "latest" }' \
 		-s https://hooks.terranblake.com/hooks/deploy 
 endif
-		
+
 install:
 	sops -d --extract '["public_key"]' --output ~/.ssh/terranblake_com.pub secrets/ssh.yml
 	sops -d --extract '["private_key"]' --output ~/.ssh/terranblake_com secrets/ssh.yml
 	chmod 600 ~/.ssh/terranblake_com*
-	grep -q erebe.eu ~/.ssh/config > /dev/null 2>&1 || cat config/ssh_client_config >> ~/.ssh/config
+	grep -q terranblake.com ~/.ssh/config > /dev/null 2>&1 || cat config/ssh_client_config >> ~/.ssh/config
 	mkdir ~/.kube || exit 0
-	sops -d --output ~/.kube/config secrets/kubernetes-config.yml
-
+	sops -d --output ~/.kube/config secrets/k3s.yml
 
 dns:
 	sops -d --output secrets_decrypted/gandi.yml secrets/gandi.yml
@@ -38,14 +37,17 @@ sudo:
 
 package:
 	scp wireguard/wireguard-backport.list ${HOST}:/etc/apt/sources.list.d/
-	ssh ${HOST} 'apt-get update && apt-get install -y curl htop mtr tcpdump ncdu vim dnsutils strace linux-perf iftop wireguard'
+	# get missing keys
+	ssh ${HOST} 'sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 04EE7237B7D453EC'
+	ssh ${HOST} 'sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138'
+	ssh ${HOST} 'apt-get update && apt-get install -f -y curl htop mtr tcpdump ncdu vim dnsutils strace iftop wireguard'
 	# Enable automatic security Updates
 	ssh ${HOST} 'echo "unattended-upgrades unattended-upgrades/enable_auto_updates boolean true" | debconf-set-selections && apt-get install unattended-upgrades -y'
 	# IPv6
-	sops -d --output secrets_decrypted/dhclient6.conf secrets/dhclient6.conf
-	scp secrets_decrypted/dhclient6.conf ${HOST}:/etc/dhcp/dhclient6.conf
-	scp config/dhclient6.service ${HOST}:/etc/systemd/system/
-	ssh ${HOST} 'systemctl daemon-reload && systemctl enable dhclient6.service && systemctl restart dhclient6.service'
+	# sops -d --output secrets_decrypted/dhclient6.conf secrets/dhclient6.conf
+	# scp secrets_decrypted/dhclient6.conf ${HOST}:/etc/dhcp/dhclient6.conf
+	# scp config/dhclient6.service ${HOST}:/etc/systemd/system/
+	# ssh ${HOST} 'systemctl daemon-reload && systemctl enable dhclient6.service && systemctl restart dhclient6.service'
 
 iptables:	
 	scp config/iptables ${HOST}:/etc/network/if-pre-up.d/iptables-restore
@@ -54,15 +56,21 @@ iptables:
 kubernetes_install:
 	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy --advertise-address 10.200.200.1 "; \
 		curl -sfL https://get.k3s.io | sh -'
-	#ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.serivce \
+	scp ${HOST}:/etc/rancher/k3s/k3s.yaml secrets_decrypted/k3s.yaml
+	sed -i '' 's/127.0.0.1/${DOMAIN}/' secrets_decrypted/k3s.yaml
+	ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.serivce \
 		|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.serviceg && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
 
 k8s:
-	#helm3 repo add stable https://kubernetes-charts.storage.googleapis.com/
-	#helm3 repo update
-	kubectl apply -f k8s/ingress-nginx-v0.40.2.yml
-	kubectl apply --validate=false -f k8s/cert-manager-v1.0.3.yml
-	kubectl apply -f k8s/lets-encrypt-issuer.yml
+	helm repo add stable https://charts.helm.sh/stable/
+	helm repo update
+
+	# dashboard
+	# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
+
+	# kubectl apply -f k8s/ingress-nginx-v0.40.2.yml
+	# kubectl apply --validate=false -f k8s/cert-manager-v1.0.3.yml
+	# kubectl apply -f k8s/lets-encrypt-issuer.yml
 
 dovecot:
 	sops -d --output secrets_decrypted/dovecot.yml secrets/dovecot.yml
@@ -73,7 +81,6 @@ postfix:
 	sops -d --output secrets_decrypted/fetchmail.yml secrets/fetchmail.yml
 	kubectl apply -f secrets_decrypted/fetchmail.yml
 	kubectl apply -f postfix/postfix.yml
-
 
 nextcloud:
 	kubectl apply -f nextcloud/config.nginx.site-confs.default.yml
@@ -92,8 +99,6 @@ webhook:
 	kubectl apply -f secrets_decrypted/webhook.yml
 
 app:
-	kubectl apply -f app/couber.yml
-	kubectl apply -f app/crawler.yml
 	kubectl apply -f app/wstunnel.yml
 
 wireguard:
@@ -101,7 +106,6 @@ wireguard:
 	ssh ${HOST} "cat /etc/wireguard/wg0.conf" | diff  - secrets_decrypted/wg0.conf \
 		|| (scp secrets_decrypted/wg0.conf ${HOST}:/etc/wireguard/wg0.conf && ssh ${HOST} systemctl restart wg-quick@wg0)
 	ssh ${HOST} 'systemctl enable wg-quick@wg0'
-
 
 pihole:
 	sops exec-env secrets/wireguard.yml 'cp pihole/wg0.conf secrets_decrypted/; for i in $$(env | grep _KEY | cut -d = -f1); do sed -i "s#__$${i}__#$${!i}#g" secrets_decrypted/wg0.conf ; done'

@@ -1,4 +1,4 @@
-Host erebe.eu
-     HostName erebe.eu
-     User erebe
-     IdentityFile ~/.ssh/erebe_eu
+Host terranblake.com
+     HostName terranblake.com
+     User terranblake
+     IdentityFile ~/.ssh/terranblake_com
