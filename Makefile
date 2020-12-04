@@ -56,10 +56,19 @@ iptables:
 kubernetes_install:
 	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy --advertise-address 10.200.200.1 "; \
 		curl -sfL https://get.k3s.io | sh -'
+
+	# get k3s config
 	scp ${HOST}:/etc/rancher/k3s/k3s.yaml secrets_decrypted/k3s.yaml
+
+	# point to correct domain
 	sed -i '' 's/127.0.0.1/${DOMAIN}/' secrets_decrypted/k3s.yaml
-	ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.serivce \
-		|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.serviceg && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
+
+	# encrypt so it can be stored in git repo
+	sops --encrypt secrets_decrypted/k3s.yaml > secrets/k3s.yaml
+
+	# restart k3s service if 
+	ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.service \
+		|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.service && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
 
 k8s:
 	helm repo add stable https://charts.helm.sh/stable/
