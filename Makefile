@@ -1,4 +1,4 @@
-HOST='root@ssh.${DOMAIN}'
+HOST='root@${DOMAIN}'
 RASPBERRY='pi@10.200.200.2'
 
 .PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook
@@ -20,8 +20,6 @@ install:
 	sops -d --extract '["private_key"]' --output ~/.ssh/terranblake_com secrets/ssh.yml
 	chmod 600 ~/.ssh/terranblake_com*
 	grep -q terranblake.com ~/.ssh/config > /dev/null 2>&1 || cat config/ssh_client_config >> ~/.ssh/config
-	mkdir ~/.kube || exit 0
-	sops -d --output ~/.kube/config secrets/k3s.yml
 
 dns:
 	sops -d --output secrets_decrypted/gandi.yml secrets/gandi.yml
@@ -56,23 +54,29 @@ iptables:
 kubernetes_install:
 	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy --advertise-address 10.200.200.1 "; \
 		curl -sfL https://get.k3s.io | sh -'
-
+		
 	# get k3s config
-	scp ${HOST}:/etc/rancher/k3s/k3s.yaml secrets_decrypted/k3s.yaml
+	scp ${HOST}:/etc/rancher/k3s/k3s.yaml secrets_decrypted/k3s.yml
 
 	# point to correct domain
-	sed -i '' 's/127.0.0.1/${DOMAIN}/' secrets_decrypted/k3s.yaml
+	sed -i '' 's/127.0.0.1/${DOMAIN}/' secrets_decrypted/k3s.yml
 
 	# encrypt so it can be stored in git repo
-	sops --encrypt secrets_decrypted/k3s.yaml > secrets/k3s.yaml
+	sops --encrypt secrets_decrypted/k3s.yml > secrets/k3s.yml
 
-	# restart k3s service if 
-	ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.service \
-		|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.service && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
+	# update kube config with k3s config
+	mkdir ~/.kube || exit 0
+	sops -d --output ~/.kube/terranblake_com secrets/k3s.yml
+
+	# restart k3s service if something has changed
+	# ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.service \
+	# 	|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.service && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
 
 k8s:
 	helm repo add stable https://charts.helm.sh/stable/
 	helm repo update
+	helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+	helm install ingress-nginx ingress-nginx/ingress-nginx --set controller.hostNetwork=true
 
 	# dashboard
 	# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
