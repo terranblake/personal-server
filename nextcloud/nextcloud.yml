@@ -37,7 +37,7 @@ spec:
           name: nextcloud-nginx-siteconfig
       - name: data
         hostPath:
-          path: /opt/nextcloud/data
+          path: /volumes/media/nextcloud
           type: Directory
       - name: config
         hostPath:

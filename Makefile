@@ -48,13 +48,23 @@ package:
 	# ssh ${HOST} 'systemctl daemon-reload && systemctl enable dhclient6.service && systemctl restart dhclient6.service'
 
 iptables:	
+	ssh ${HOST} 'update-alternatives --set iptables /usr/sbin/iptables-legacy'
+	ssh ${HOST} 'update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy'
+	# ssh ${HOST} 'update-alternatives --set arptables /usr/sbin/arptables-legacy'
+	# ssh ${HOST} 'update-alternatives --set ebtables /usr/sbin/ebtables-legacy'
+
 	scp config/iptables ${HOST}:/etc/network/if-pre-up.d/iptables-restore
 	ssh ${HOST} 'chmod +x /etc/network/if-pre-up.d/iptables-restore && sh /etc/network/if-pre-up.d/iptables-restore'
+
+	# https://stackoverflow.com/questions/61214151/inter-pods-communication-with-dns-name-not-working-in-kubernetes
+	ssh ${HOST} 'firewall-cmd --add-masquerade --permanent'
+	ssh ${HOST} 'firewall-cmd --reload'
+	ssh ${HOST} 'systemctl restart firewalld'
 	
 kubernetes_install:
-	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy --advertise-address 10.200.200.1 "; \
+	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy"; \
 		curl -sfL https://get.k3s.io | sh -'
-		
+
 	# get k3s config
 	scp ${HOST}:/etc/rancher/k3s/k3s.yaml secrets_decrypted/k3s.yml
 
@@ -73,17 +83,27 @@ kubernetes_install:
 	# 	|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.service && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
 
 k8s:
-	helm repo add stable https://charts.helm.sh/stable/
-	helm repo update
-	helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-	helm install ingress-nginx ingress-nginx/ingress-nginx --set controller.hostNetwork=true
+	kubectl apply -f k8s/ingress-nginx-v0.41.0.yml
+	kubectl wait --namespace ingress-nginx \
+		--for=condition=ready pod \
+		--selector=app.kubernetes.io/component=controller \
+		--timeout=120s
 
-	# dashboard
-	# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
+	# kubectl apply -f k8s/ingress.yml
+	kubectl create namespace cert-manager
 
-	# kubectl apply -f k8s/ingress-nginx-v0.40.2.yml
-	# kubectl apply --validate=false -f k8s/cert-manager-v1.0.3.yml
-	# kubectl apply -f k8s/lets-encrypt-issuer.yml
+	# store cloudflare api key in cluster for lets-encrypt issuing
+	sops -d --output secrets_decrypted/cloudflare-api-token-secret.yml secrets/cloudflare-api-token-secret.yml
+	kubectl apply -f secrets_decrypted/cloudflare-api-token-secret.yml
+	rm secrets_decrypted/cloudflare-api-token-secret.yml
+
+	kubectl apply -f k8s/cert-manager-v1.0.4.yml
+	kubectl wait --namespace cert-manager \
+		--for=condition=ready pod \
+		--selector=app.kubernetes.io/component=webhook \
+		--timeout=20s
+
+	kubectl apply -f k8s/lets-encrypt-issuer.yml
 
 dovecot:
 	sops -d --output secrets_decrypted/dovecot.yml secrets/dovecot.yml

@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: earney
+  labels:
+    app: nginx
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    name: nginx
+    targetPort: 3000
+  selector:
+    app: earney
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earney
+  labels:
+    app: earney
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: earney
+  template:
+    metadata:
+      labels:
+        app: earney
+    spec:
+      containers:
+      - name: dashboard
+        image: ghcr.io/terranblake/earney
+        command: ["cd ./markets_dashboard && python app.py"]
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - name: config
+          mountPath: "/config"
+      volumes:
+      - name: config
+        emptyDir: {}

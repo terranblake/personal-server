@@ -1,4 +1,4 @@
-apiVersion: cert-manager.io/v1
+apiVersion: cert-manager.io/v1alpha2
 kind: ClusterIssuer
 metadata:
   name: letsencrypt-prod
@@ -6,10 +6,21 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: erebe@erebe.eu
+    email: personal@terranblake.com
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
-    - http01:
-        ingress:
-          class: nginx
+      # - http01:
+      #     ingress:
+      #       class: nginx
+      - dns01:
+          cloudflare:
+            email: personal@terranblake.com
+            apiKeySecretRef:
+              name: cloudflare-api-token-secret
+              key: api-token
+        selector:
+          matchLabels:
+            use-cloudflare-solver: "true"
+          dnsZones:
+            - "terranblake.com"
