@@ -128,7 +128,7 @@ data:
         "trigger-rule": {
           "match": {
             "type": "value",
-            "value": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE8J7Icx5N/A/K+1MaGJTu5ynRGsycK+Sxzn8pn1H0EM personal@terranblake.com",
+            "value": "__DEPLOYER_SECRET__",
             "parameter": {
               "source": "header",
               "name": "X-Webhook-Token"
