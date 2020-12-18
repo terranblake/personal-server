@@ -48,9 +48,11 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: deployer
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
       - name: webhook
-        image: ghcr.io/erebe/webhook:latest
+        image: ghcr.io/terranblake/webhook:latest
         imagePullPolicy: Always
         args:
         - "-hooks=/data/hook.json"
@@ -96,10 +98,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - hooks.erebe.eu
+    - hooks.terranblake.com
     secretName: webhook-tls
   rules:
-  - host: hooks.erebe.eu
+  - host: hooks.terranblake.com
     http:
       paths:
       - path: /
@@ -126,7 +128,7 @@ data:
         "trigger-rule": {
           "match": {
             "type": "value",
-            "value": "__DEPLOYER_SECRET__",
+            "value": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE8J7Icx5N/A/K+1MaGJTu5ynRGsycK+Sxzn8pn1H0EM personal@terranblake.com",
             "parameter": {
               "source": "header",
               "name": "X-Webhook-Token"
@@ -138,7 +140,7 @@ data:
 
   deploy.sh: |
     #!/bin/sh
-
+    
     [[ -z "$1" ]] && exit 1
 
     app_name="$1"

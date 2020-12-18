@@ -35,6 +35,15 @@ sudo:
 
 package:
 	scp wireguard/wireguard-backport.list ${HOST}:/etc/apt/sources.list.d/
+	
+	# setup sudo permissions for root
+	# ssh ${HOST} 'su -'
+	ssh ${HOST} 'apt-get install sudo -y'
+	ssh ${HOST} 'usermod -aG sudo root'
+
+	# install gnupg2 package
+	ssh ${HOST} 'apt-get update && apt-get install -y gnupg2'
+
 	# get missing keys
 	ssh ${HOST} 'sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 04EE7237B7D453EC'
 	ssh ${HOST} 'sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138'
@@ -48,21 +57,11 @@ package:
 	# ssh ${HOST} 'systemctl daemon-reload && systemctl enable dhclient6.service && systemctl restart dhclient6.service'
 
 iptables:	
-	ssh ${HOST} 'update-alternatives --set iptables /usr/sbin/iptables-legacy'
-	ssh ${HOST} 'update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy'
-	# ssh ${HOST} 'update-alternatives --set arptables /usr/sbin/arptables-legacy'
-	# ssh ${HOST} 'update-alternatives --set ebtables /usr/sbin/ebtables-legacy'
-
 	scp config/iptables ${HOST}:/etc/network/if-pre-up.d/iptables-restore
 	ssh ${HOST} 'chmod +x /etc/network/if-pre-up.d/iptables-restore && sh /etc/network/if-pre-up.d/iptables-restore'
-
-	# https://stackoverflow.com/questions/61214151/inter-pods-communication-with-dns-name-not-working-in-kubernetes
-	ssh ${HOST} 'firewall-cmd --add-masquerade --permanent'
-	ssh ${HOST} 'firewall-cmd --reload'
-	ssh ${HOST} 'systemctl restart firewalld'
 	
 kubernetes_install:
-	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --no-deploy local-storage --disable-cloud-controller --disable-network-policy"; \
+	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --disable-cloud-controller --disable-network-policy"; \
 		curl -sfL https://get.k3s.io | sh -'
 
 	# get k3s config
@@ -82,6 +81,9 @@ kubernetes_install:
 	# ssh ${HOST} "cat /etc/systemd/system/k3s.service" | diff  - k8s/k3s.service \
 	# 	|| (scp k8s/k3s.service ${HOST}:/etc/systemd/system/k3s.service && ssh ${HOST} 'systemctl daemon-reload && systemctl restart k3s.service')
 
+kubernetes_uninstall:
+	ssh ${HOST} '/usr/local/bin/k3s-uninstall.sh'
+
 k8s:
 	kubectl apply -f k8s/ingress-nginx-v0.41.0.yml
 	kubectl wait --namespace ingress-nginx \
@@ -92,11 +94,6 @@ k8s:
 	# kubectl apply -f k8s/ingress.yml
 	kubectl create namespace cert-manager
 
-	# store cloudflare api key in cluster for lets-encrypt issuing
-	sops -d --output secrets_decrypted/cloudflare-api-token-secret.yml secrets/cloudflare-api-token-secret.yml
-	kubectl apply -f secrets_decrypted/cloudflare-api-token-secret.yml
-	rm secrets_decrypted/cloudflare-api-token-secret.yml
-
 	kubectl apply -f k8s/cert-manager-v1.0.4.yml
 	kubectl wait --namespace cert-manager \
 		--for=condition=ready pod \
@@ -104,6 +101,11 @@ k8s:
 		--timeout=20s
 
 	kubectl apply -f k8s/lets-encrypt-issuer.yml
+	kubectl apply -f k8s/ingress.yml
+
+	# netdata installation
+	kubectl apply -f netdata/netdata.yml
+
 
 dovecot:
 	sops -d --output secrets_decrypted/dovecot.yml secrets/dovecot.yml
@@ -128,8 +130,16 @@ backup:
 	kubectl apply -f backup/backup-cron.yml
 
 webhook:
-	sops exec-env secrets/webhook.yml 'cp webhook/webhook.yml secrets_decrypted/; for i in $$(env | grep _SECRET | cut -d = -f1); do sed -i "s#__$${i}__#$${!i}#g" secrets_decrypted/webhook.yml ; done'
-	kubectl apply -f secrets_decrypted/webhook.yml
+	# webhook ssh key
+	# fixme: was unable to get sed to replace the value properly
+	# sops exec-env secrets/webhook.yml 'cp webhook/webhook.yml secrets_decrypted/; sed -i "s/__DEPLOYER_SECRET__/${__DEPLOYER_SECRET__}/g" secrets_decrypted/webhook.yml'
+
+	# create ghcr imagePullSecret for pulling webhook
+	# fixme: this only worked when running in a terminal and not when using 'make webhook'
+	# sops exec-env secrets/ghcr.yml 'ssh ${HOST} kubectl create secret docker-registry ghcr-pull-secret --docker-server=ghcr.io --docker-username=terranblake@gmail.com --docker-password=${TOKEN}'
+
+	# sops -d --output secrets_decrypted/webhook.yml secrets/webhook.yml
+	# kubectl apply -f secrets_decrypted/webhook.yml
 
 app:
 	kubectl apply -f app/wstunnel.yml

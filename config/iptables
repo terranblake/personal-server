@@ -6,6 +6,10 @@
 ###########################
 # IPv4
 ###########################
+
+# todo: use ufw for firewall management
+# sudo ufw allow 51194/udp
+
 # Reset our custom chain
 iptables -P INPUT ACCEPT
 iptables -D INPUT -j USER_CUSTOM

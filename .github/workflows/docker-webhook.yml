@@ -26,7 +26,7 @@ jobs:
           context: webhook
           file: webhook/Dockerfile
           push: true
-          tags: ghcr.io/erebe/webhook:latest
+          tags: ghcr.io/terranblake/webhook:latest
       - name: webhook Image digest
         run: echo webhook ${{ steps.docker_build_webhook.outputs.digest }}
       - name: Trigger deployer

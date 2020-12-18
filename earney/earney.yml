@@ -1,18 +1,3 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: earney
-  labels:
-    app: nginx
-spec:
-  type: ClusterIP
-  ports:
-  - port: 3000
-    name: nginx
-    targetPort: 3000
-  selector:
-    app: earney
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,15 +14,59 @@ spec:
       labels:
         app: earney
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
-      - name: dashboard
-        image: ghcr.io/terranblake/earney
-        command: ["cd ./markets_dashboard && python app.py"]
-        ports:
-        - containerPort: 3000
-        volumeMounts:
-        - name: config
-          mountPath: "/config"
+        - name: dashboard
+          image: ghcr.io/terranblake/earney
+          imagePullPolicy: Always
+          command: ["python", "/app/markets_dashboard/app.py"]
+          ports:
+            - name: http
+              containerPort: 8050
+          volumeMounts:
+            - name: config
+              mountPath: "/config"
       volumes:
-      - name: config
-        emptyDir: {}
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: earney
+spec:
+  selector:
+    app: earney
+  ports:
+    - protocol: TCP
+      port: 8050
+      name: http
+  clusterIP: None
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: earney-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - earney.terranblake.com
+      secretName: earney-tls
+  rules:
+    - host: earney.terranblake.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: earney
+                port:
+                  number: 8050
