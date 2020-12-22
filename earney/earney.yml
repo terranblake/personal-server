@@ -19,10 +19,20 @@ spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
-        - name: dashboard
-          image: ghcr.io/terranblake/earney
+        # - name: dashboard
+        #   image: ghcr.io/terranblake/earney
+        #   imagePullPolicy: Always
+        #   command: ["python", "/app/markets_dashboard/app.py"]
+        #   ports:
+        #     - name: http
+        #       containerPort: 8050
+        #   volumeMounts:
+        #     - name: config
+        #       mountPath: "/config"
+        - name: react-dashboard
+          image: ghcr.io/terranblake/earney-react
           imagePullPolicy: Always
-          command: ["python", "/app/markets_dashboard/app.py"]
+          command: ["cd /usr/src/app/react_dashboard && npm start"]
           ports:
             - name: http
               containerPort: 8050
