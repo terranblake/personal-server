@@ -1,7 +1,8 @@
+DEVICE='terrans-mac'
 HOST='root@${DOMAIN}'
 RASPBERRY='pi@10.200.200.2'
 
-.PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook
+.PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook earney
 
 deploy: dns sudo ssh package iptables k8s dovecot postfix nextcloud webhook backup wireguard
 
@@ -73,8 +74,10 @@ kubernetes_install:
 	# encrypt so it can be stored in git repo
 	sops --encrypt secrets_decrypted/k3s.yml > secrets/k3s.yml
 
-	# update kube config with k3s config
+	rm secrets_decrypted/k3s.yml
 	mkdir ~/.kube || exit 0
+
+	# copy config to default location
 	sops -d --output ~/.kube/terranblake_com secrets/k3s.yml
 
 	# restart k3s service if something has changed
@@ -130,28 +133,53 @@ backup:
 	kubectl apply -f backup/backup-cron.yml
 
 webhook:
-	# webhook ssh key
-	# fixme: was unable to get sed to replace the value properly
-	# sops exec-env secrets/webhook.yml 'cp webhook/webhook.yml secrets_decrypted/; sed -i "s/__DEPLOYER_SECRET__/${__DEPLOYER_SECRET__}/g" secrets_decrypted/webhook.yml'
+	# webhook ssh key (only needs to be ran the first time)
+	# cp webhook/webhook.yml secrets_decrypted/; sed -i "s/__DEPLOYER_SECRET__/$$__DEPLOYER_SECRET__/g" secrets_decrypted/webhook.yml
 
 	# create ghcr imagePullSecret for pulling webhook
-	# fixme: this only worked when running in a terminal and not when using 'make webhook'
-	# sops exec-env secrets/ghcr.yml 'ssh ${HOST} kubectl create secret docker-registry ghcr-pull-secret --docker-server=ghcr.io --docker-username=terranblake@gmail.com --docker-password=${TOKEN}'
+	eval $$(sops -d --output-type dotenv secrets/ghcr.yml) && \
+		kubectl create secret docker-registry ghcr-pull-secret \
+		--namespace=default \
+		--docker-server=ghcr.io \
+		--docker-username=terranblake@gmail.com \
+		--docker-password=$$TOKEN
 
-	# sops -d --output secrets_decrypted/webhook.yml secrets/webhook.yml
-	# kubectl apply -f secrets_decrypted/webhook.yml
+	# deploy webhook using encrypted webhook manifest
+	sops exec-file secrets/webhook.yml 'MANIFEST={} && kubectl apply -f $$MANIFEST'
+
+earney:
+	# putting this here because when you run 'make COMMAND' sops exec-env is not providing
+	# the variables loaded from the file
+	eval $$(sops -d --output-type dotenv secrets/ghcr.yml) && \
+	kubectl create secret docker-registry ghcr-pull-secret \
+		--namespace=earney \
+		--docker-server=ghcr.io \
+		--docker-username=terranblake@gmail.com \
+		--docker-password=$$TOKEN
 
 app:
 	kubectl apply -f app/wstunnel.yml
 
 wireguard:
-	sops exec-env secrets/wireguard.yml 'cp wireguard/wg0.conf secrets_decrypted/; for i in $$(env | grep _KEY | cut -d = -f1); do sed -i "s#__$${i}__#$${!i}#g" secrets_decrypted/wg0.conf ; done'
-	ssh ${HOST} "cat /etc/wireguard/wg0.conf" | diff  - secrets_decrypted/wg0.conf \
-		|| (scp secrets_decrypted/wg0.conf ${HOST}:/etc/wireguard/wg0.conf && ssh ${HOST} systemctl restart wg-quick@wg0)
-	ssh ${HOST} 'systemctl enable wg-quick@wg0'
+	scp ${HOST}:/etc/wireguard/wghub.conf secrets_decrypted/wghub.conf
+
+	# install wg helper
+	ssh ${HOST} 'cd /etc/wireguard && wget https://raw.githubusercontent.com/burghardt/easy-wg-quick/master/easy-wg-quick'
+	ssh ${HOST} 'cd /etc/wireguard && chmod +x easy-wg-quick'
+
+	# add new client to network
+	ssh ${HOST} 'cd /etc/wireguard && wg-quick down ./wghub.conf'
+	ssh ${HOST} 'cd /etc/wireguard && ./easy-wg-quick ${DEVICE}'
+	scp ${HOST}:/etc/wireguard/wgclient_${DEVICE}.conf secrets_decrypted/wgclient_${DEVICE}.conf
+	ssh ${HOST} 'cd /etc/wireguard && systemctl enable wg-quick@wghub && systemctl restart wg-quick@wghub'
+
+	# copy updated vpn config
+	scp ${HOST}:/etc/wireguard/wghub.conf secrets_decrypted/wghub.conf
+	sops --encrypt secrets_decrypted/wghub.conf > secrets/wghub.conf
+	# rm secrets_decrypted/wghub.conf
 
 pihole:
 	sops exec-env secrets/wireguard.yml 'cp pihole/wg0.conf secrets_decrypted/; for i in $$(env | grep _KEY | cut -d = -f1); do sed -i "s#__$${i}__#$${!i}#g" secrets_decrypted/wg0.conf ; done'
 	rsync --rsync-path="sudo rsync" secrets_decrypted/wg0.conf ${RASPBERRY}:/etc/wireguard/wg0.conf 
-	ssh ${RASPBERRY} 'sudo systemctl enable wg-quick@wg0; sudo systemctl restart wg-quick@wg0'
+	ssh ${RASPBERRY} 'sudo systemctl enable wg-quick@wghub; sudo systemctl restart wg-quick@wg0'
 	kubectl apply -f pihole/pihole.yml

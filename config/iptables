@@ -49,6 +49,7 @@ iptables -A USER_CUSTOM -p tcp --dport 993 -j ACCEPT
 
 # Allow wireguard
 iptables -A USER_CUSTOM -p udp --dport 995 -j ACCEPT
+iptables -A USER_CUSTOM -p udp --dport 55199 -j ACCEPT
 
 # Allow kubernetes
 iptables -A USER_CUSTOM -p tcp --dport 6443 -j ACCEPT
