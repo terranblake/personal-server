@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earney-scheduler
+  namespace: earney
+  labels:
+    app: earney-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: earney-scheduler
+  template:
+    metadata:
+      labels:
+        app: earney-scheduler
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: server
+          image: ghcr.io/terranblake/earney-api
+          imagePullPolicy: Always
+          command: ["celery -A scheduler beat -S redbeat.RedBeatScheduler"]
+          ports:
+            - name: http
+              containerPort: 8001
+      volumes:
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: earney-scheduler
+  namespace: earney
+spec:
+  selector:
+    app: earney-scheduler
+  ports:
+    - protocol: TCP
+      port: 5001
+      name: http
+  clusterIP: None
+  type: ClusterIP

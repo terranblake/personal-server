@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earney
+  namespace: earney
+  labels:
+    app: earney
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: earney
+  template:
+    metadata:
+      labels:
+        app: earney
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: redis
+          image: redis
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: config
+              mountPath: "/config"
+      volumes:
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+  clusterIP: None
+  type: ClusterIP

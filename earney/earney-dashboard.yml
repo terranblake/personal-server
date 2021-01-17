@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earney
+  namespace: earney
+  labels:
+    app: earney
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: earney
+  template:
+    metadata:
+      labels:
+        app: earney
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: dashboard
+          image: ghcr.io/terranblake/earney-dashboard
+          imagePullPolicy: Always
+          command: ["npm", "start"]
+          env:
+            - name: WSHOST
+              value: 'earney-ws'
+            - name: WSPORT
+              value: '8001'
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: config
+              mountPath: "/config"
+      volumes:
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: earney
+  namespace: earney
+spec:
+  selector:
+    app: earney
+  ports:
+    - protocol: TCP
+      port: 3000
+      name: http
+  clusterIP: None
+  type: ClusterIP
