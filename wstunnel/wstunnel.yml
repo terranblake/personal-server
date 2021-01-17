@@ -59,10 +59,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - ws.erebe.eu
+        - ws.terranblake.com
       secretName: wstunnel-tls
   rules:
-    - host: ws.erebe.eu
+    - host: ws.terranblake.com
       http:
         paths:
           - path: /

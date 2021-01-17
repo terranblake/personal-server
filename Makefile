@@ -157,8 +157,8 @@ earney:
 		--docker-username=terranblake@gmail.com \
 		--docker-password=$$TOKEN
 
-app:
-	kubectl apply -f app/wstunnel.yml
+tunnel:
+	kubectl apply -f wstunnel/wstunnel.yml
 
 wireguard:
 	scp ${HOST}:/etc/wireguard/wghub.conf secrets_decrypted/wghub.conf
@@ -171,7 +171,7 @@ wireguard:
 	ssh ${HOST} 'cd /etc/wireguard && wg-quick down ./wghub.conf'
 	ssh ${HOST} 'cd /etc/wireguard && ./easy-wg-quick ${DEVICE}'
 	scp ${HOST}:/etc/wireguard/wgclient_${DEVICE}.conf secrets_decrypted/wgclient_${DEVICE}.conf
-	ssh ${HOST} 'cd /etc/wireguard && systemctl enable wg-quick@wghub && systemctl restart wg-quick@wghub'
+	ssh ${HOST} 'cd /etc/wireguard && systemctl enable wg-quick@wghub && wg-quick up wg-quick@wghub'
 
 	# copy updated vpn config
 	scp ${HOST}:/etc/wireguard/wghub.conf secrets_decrypted/wghub.conf
