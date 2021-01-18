@@ -1,22 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: earney
+  name: dashboard
   namespace: earney
   labels:
-    app: earney
+    app: dashboard
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: earney
+      app: dashboard
   template:
     metadata:
       labels:
-        app: earney
+        app: dashboard
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:
@@ -26,7 +24,7 @@ spec:
           command: ["npm", "start"]
           env:
             - name: WSHOST
-              value: 'earney-ws'
+              value: 'server'
             - name: WSPORT
               value: '8001'
           ports:
@@ -34,19 +32,20 @@ spec:
               containerPort: 3000
           volumeMounts:
             - name: config
-              mountPath: "/config"
+              mountPath: /app/src/config
       volumes:
         - name: config
-          emptyDir: {}
+          configMap:
+            name: earney-dashboard-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: earney
+  name: dashboard
   namespace: earney
 spec:
   selector:
-    app: earney
+    app: dashboard
   ports:
     - protocol: TCP
       port: 3000

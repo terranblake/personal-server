@@ -1,8 +1,8 @@
-name: Publish Postfix Image
+name: Publish Superset Image
 on:
   push:
     paths:
-    - 'postfix/**'
+    - 'superset/**'
    
 jobs:
   buildAndPush:
@@ -19,18 +19,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.CR_PAT }}
-      - name: Postfix
+      - name: Superset
         id: docker_build
         uses: docker/build-push-action@v2
         with:
-          context: postfix
-          file: postfix/Dockerfile
+          context: superset
+          file: superset/Dockerfile.superset
           push: true
-          tags: ghcr.io/erebe/postfix:latest
-      - name: Postfix Image digest
-        run: echo Postfix ${{ steps.docker_build.outputs.digest }}
+          tags: ghcr.io/terranblake/superset:latest
+      - name: Superset Image digest
+        run: echo Superset ${{ steps.docker_build.outputs.digest }}
       - name: Trigger deployer
         run: |
-          payload='{ "application_name": "postfix", "image_digest": "${{ steps.docker_build.outputs.digest }}", "image_tag": "latest" }'
+          payload='{ "application_name": "superset", "image_digest": "${{ steps.docker_build.outputs.digest }}", "image_tag": "latest" }'
           token='X-Webhook-Token: ${{ secrets.WEBHOOK_SECRET }}'
           curl -i -X POST -H 'Content-Type: application/json' -H "${token}"  -d "${payload}" https://hooks.terranblake.com/hooks/deploy

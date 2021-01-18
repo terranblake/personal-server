@@ -4,7 +4,7 @@ RASPBERRY='pi@10.200.200.2'
 
 .PHONY: install deploy release dns sudo ssh package iptables kubernetes_install k8s dovecot postfix nextcloud nextcloud_resync_file backup app wireguard pihole webhook earney
 
-deploy: dns sudo ssh package iptables k8s dovecot postfix nextcloud webhook backup wireguard
+deploy: auth dns sudo ssh package iptables k8s dovecot postfix nextcloud webhook backup wireguard
 
 release:
 ifdef ARGS
@@ -18,9 +18,12 @@ endif
 
 install:
 	sops -d --extract '["public_key"]' --output ~/.ssh/terranblake_com.pub secrets/ssh.yml
-	sops -d --extract '["private_key"]' --output ~/.ssh/terranblake_com secrets/ssh.yml
+	sops -d --extract '["private_key"]' --output /Volumes/sammy/.ssh/terranblake_com secrets/ssh.yml
 	chmod 600 ~/.ssh/terranblake_com*
 	grep -q terranblake.com ~/.ssh/config > /dev/null 2>&1 || cat config/ssh_client_config >> ~/.ssh/config
+
+auth:
+	ssh-copy-id -i ~/.ssh/terranblake_com.pub root@terranblake.com
 
 dns:
 	sops -d --output secrets_decrypted/gandi.yml secrets/gandi.yml
@@ -62,7 +65,7 @@ iptables:
 	ssh ${HOST} 'chmod +x /etc/network/if-pre-up.d/iptables-restore && sh /etc/network/if-pre-up.d/iptables-restore'
 	
 kubernetes_install:
-	ssh ${HOST} 'export INSTALL_K3S_EXEC=" --no-deploy servicelb --no-deploy traefik --disable-cloud-controller --disable-network-policy"; \
+	ssh ${HOST} 'export INSTALL_K3S_EXEC="--no-deploy traefik --disable-cloud-controller --disable-network-policy"; \
 		curl -sfL https://get.k3s.io | sh -'
 
 	# get k3s config
@@ -88,6 +91,7 @@ kubernetes_uninstall:
 	ssh ${HOST} '/usr/local/bin/k3s-uninstall.sh'
 
 k8s:
+	# this sometimes needs to be ran twice
 	kubectl apply -f k8s/ingress-nginx-v0.41.0.yml
 	kubectl wait --namespace ingress-nginx \
 		--for=condition=ready pod \
@@ -104,7 +108,7 @@ k8s:
 		--timeout=20s
 
 	kubectl apply -f k8s/lets-encrypt-issuer.yml
-	kubectl apply -f k8s/ingress.yml
+	# kubectl apply -f k8s/ingress.yml
 
 	# netdata installation
 	kubectl apply -f netdata/netdata.yml
@@ -147,15 +151,40 @@ webhook:
 	# deploy webhook using encrypted webhook manifest
 	sops exec-file secrets/webhook.yml 'MANIFEST={} && kubectl apply -f $$MANIFEST'
 
+earney_superset:
+	# this must be done after the earney namespace has been created
+	sops -d secrets/superset.yml | kubectl create -f
+	kubectl create -f superset/ingress.yml
+	kubectl create -f superset/superset.yml
+
 earney:
-	# putting this here because when you run 'make COMMAND' sops exec-env is not providing
-	# the variables loaded from the file
+	# create namespace for all earney services
+	# kubectl create -f ./earney/namespace.yml
+
+	sops -d secrets/postgres.yml | kubectl create -f
+	# create secret for pulling images from github
 	eval $$(sops -d --output-type dotenv secrets/ghcr.yml) && \
-	kubectl create secret docker-registry ghcr-pull-secret \
+		kubectl create secret docker-registry ghcr-pull-secret \
 		--namespace=earney \
 		--docker-server=ghcr.io \
 		--docker-username=terranblake@gmail.com \
 		--docker-password=$$TOKEN
+
+	# create all credentials for earney services
+	kubectl create configmap earney-server-config --from-file ./secrets_decrypted/server_default.json -n earney
+	kubectl create configmap earney-dashboard-config --from-file ./secrets_decrypted/default.json -n earney
+	kubectl create configmap earney-tdameritrade-auth --from-file ./secrets_decrypted/tdameritrade.json -n earney
+
+	# create all earney services
+	kubectl create -f ./earney/ingress.yml
+	kubectl create -f ./earney/redis.yml
+	kubectl create -f ./earney/postgres.yml
+	kubectl create -f ./earney/server.yml
+	kubectl create -f ./earney/dashboard.yml
+	kubectl create -f ./earney/integrator.yml
+	kubectl create -f ./earney/scheduler.yml
+
+	kubectl create -f ./superset/
 
 tunnel:
 	kubectl apply -f wstunnel/wstunnel.yml

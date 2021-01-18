@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: earney
+  name: superset
+  labels:
+    app: superset
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 8088
+    targetPort: 8088
+  selector:
+    app: superset
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset
+  namespace: earney
+spec:
+  selector:
+    matchLabels:
+      app: superset
+  template:
+    metadata:
+      labels:
+        app: superset
+    spec:
+      imagePullSecrets:
+          - name: ghcr-pull-secret
+      containers:
+      - name: superset
+        image: ghcr.io/terranblake/superset:latest
+        envFrom:
+        - secretRef:
+            name: superset-creds
+        ports:
+        - containerPort: 8088
+      volumes:
+      - name: superset-creds
+        secret:
+          secretName: superset-creds

@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: earney
+  labels:
+    app: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: server
+          lifecycle:
+            postStart:
+              exec:
+                command: [
+                  "/bin/sh",
+                  "-c",
+                  "cp /tmp/files/tdameritrade.json /usr/config/tdameritrade/tdameritrade.json && ls /usr/config/tdameritrade"
+                  ]
+          image: ghcr.io/terranblake/earney-api
+          imagePullPolicy: Always
+          command: ["python", "server.py"]
+          env:
+          - name: ENV
+            value: server_default
+          - name: CONFIG_PATH
+            value: /usr/config/server
+          - name: TDAMERITRADE_PATH
+            value: /usr/config/tdameritrade
+          ports:
+            - name: http
+              containerPort: 5001
+          volumeMounts:
+            - name: config
+              mountPath: /usr/config/server
+            - name: tdameritrade
+              readOnly: false
+              mountPath: /tmp/files
+            - name: tmp-files
+              mountPath: /usr/config/tdameritrade
+      volumes:
+        - name: config
+          configMap:
+            name: earney-server-config
+        - name: tdameritrade
+          configMap:
+            name: earney-tdameritrade-auth
+        - name: tmp-files
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: earney
+spec:
+  selector:
+    app: server
+  ports:
+    - protocol: TCP
+      port: 5001
+      name: http
+  clusterIP: None
+  type: ClusterIP

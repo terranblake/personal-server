@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: earney
+spec:
+  containers:
+    - name: test-container
+      image: k8s.gcr.io/busybox
+      command: [
+        "/bin/sh",
+        "-c",
+        "echo $ADMIN_EMAIL"
+      ]
+      envFrom:
+      - secretRef:
+          name: superset-creds
+      volumeMounts:
+      - name: config
+        mountPath: /usr/config/server
+      - name: tdameritrade
+        readOnly: false
+        mountPath: /tmp/files
+      - name: tmp-files
+        mountPath: /usr/config/tdameritrade
+  volumes:
+    - name: config
+      configMap:
+        name: earney-server-config
+    - name: tdameritrade
+      configMap:
+        name: earney-tdameritrade-auth
+    - name: tmp-files
+      emptyDir: {}
+    - name: superset-creds
+      secret:
+        secretName: superset-creds
