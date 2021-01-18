@@ -99,7 +99,18 @@ k8s:
 		--timeout=120s
 
 	# kubectl apply -f k8s/ingress.yml
-	kubectl create namespace cert-manager
+	# kubectl create namespace cert-manager
+
+	# add pull token to kube-system namespace
+	eval $$(sops -d --output-type dotenv secrets/ghcr.yml) && \
+		kubectl create secret docker-registry ghcr-pull-secret \
+		--namespace=kube-system \
+		--docker-server=ghcr.io \
+		--docker-username=terranblake@gmail.com \
+		--docker-password=$$TOKEN
+
+	# create cluster level logging pod
+	kubectl create -f logs/logs.yml
 
 	kubectl apply -f k8s/cert-manager-v1.0.4.yml
 	kubectl wait --namespace cert-manager \
@@ -159,9 +170,11 @@ earney_superset:
 
 earney:
 	# create namespace for all earney services
-	# kubectl create -f ./earney/namespace.yml
+	kubectl create -f ./earney/namespace.yml
 
+	# create secret for postgres configuration and credentials
 	sops -d secrets/postgres.yml | kubectl create -f
+
 	# create secret for pulling images from github
 	eval $$(sops -d --output-type dotenv secrets/ghcr.yml) && \
 		kubectl create secret docker-registry ghcr-pull-secret \
